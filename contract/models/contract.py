@@ -11,6 +11,11 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests import Form
 from odoo.tools.translate import _
+try:
+    from odoo.addons.queue_job.job import job
+except ImportError:
+    job = lambda *args, **kwargs: lambda func: func
+
 
 
 class ContractContract(models.Model):
@@ -288,6 +293,7 @@ class ContractContract(models.Model):
             action["views"] = [(tree_view.id, "tree"), (form_view.id, "form")]
         return action
 
+    @job
     @api.depends("contract_line_ids.date_end")
     def _compute_date_end(self):
         for contract in self:
@@ -296,6 +302,7 @@ class ContractContract(models.Model):
             if date_end and all(date_end):
                 contract.date_end = max(date_end)
 
+    @job
     @api.depends(
         "contract_line_ids.recurring_next_date",
         "contract_line_ids.is_canceled",
@@ -591,7 +598,7 @@ class ContractContract(models.Model):
         invoices_values = self._prepare_recurring_invoices_values(date_ref)
         moves = self.env["account.move"].create(invoices_values)
         self._invoice_followers(moves)
-        self._compute_recurring_next_date()
+        self.with_delay()._compute_recurring_next_date()
         return moves
 
     @api.model
